@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0a0f1c">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Códigos de barra">
+  <title>Generador de códigos de barra</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg:#0a0f1c; --card-bg:#101626; --text:#d8e1ff;
+      --primary:#5ab4ff; --glow:rgba(90,180,255,.35);
+    }
+    * { box-sizing:border-box; }
+    body {
+      margin:0; min-height:100vh; padding:24px 16px max(100px, env(safe-area-inset-bottom));
+      background:var(--bg); color:var(--text);
+      font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+      transition:background .25s ease,color .25s ease;
+    }
+    body.light { color-scheme:light; --bg:#e9f0ff; --card-bg:#fff; --text:#1a1a1a; --glow:rgba(0,119,255,.18); }
+    .container {
+      width:min(100%,520px); margin:24px auto 0; padding:clamp(20px,5vw,28px);
+      background:var(--card-bg); border-radius:20px; box-shadow:0 0 25px var(--glow);
+    }
+    h1 { margin:0 0 24px; text-align:center; font-size:clamp(22px,5vw,27px); line-height:1.2; }
+    label { display:block; margin:0 0 8px; font-size:14px; opacity:.85; }
+    input {
+      display:block; width:100%; min-width:0; padding:15px;
+      border:1px solid rgba(128,150,190,.22); border-radius:12px;
+      margin:0 0 16px; background:rgba(128,150,190,.09); color:var(--text);
+      font-size:17px; outline:none;
+    }
+    input:focus { border-color:var(--primary); }
+    .hint { margin:-7px 0 18px; font-size:12px; opacity:.72; line-height:1.45; }
+    button {
+      width:100%; padding:14px 16px; margin:0 0 12px; border:0; border-radius:12px;
+      color:white; font-size:17px; font-weight:650; cursor:pointer;
+      background:linear-gradient(135deg,#006eff,#4bc7ff);
+      -webkit-tap-highlight-color:transparent;
+    }
+    button:active { transform:scale(.99); }
+    .clear { background:linear-gradient(135deg,#ff2e63,#ff6b8b); }
+    #message { min-height:20px; margin:4px 0 0; color:#ff6682; font-size:13px; }
+    #barcode-wrap {
+      display:none; margin-top:18px; padding:14px 8px; border-radius:12px;
+      background:#fff; overflow-x:auto; text-align:center;
+    }
+    #barcode { display:block; width:100%; height:auto; }
+    .toggle {
+      position:fixed; right:20px; bottom:max(20px,env(safe-area-inset-bottom));
+      width:56px; height:56px; border-radius:50%; padding:0; margin:0;
+      background:#1f2a44; box-shadow:0 0 18px var(--glow); font-size:26px;
+    }
+    .footer { text-align:center; font-size:11px; opacity:.55; margin:18px 0 0; }
+  </style>
+</head>
+<body class="light">
+  <main class="container">
+    <h1>Generador de códigos de barra</h1>
+    <label for="inputText">Texto o números</label>
+    <input id="inputText" type="text" autocomplete="off" autocapitalize="characters"
+           placeholder="Escribe texto o números..." maxlength="40">
+    <p class="hint">Formato Code 39. Admite letras A–Z, números 0–9, espacio y los caracteres - . $ / + %.</p>
+    <button id="generateBtn" type="button">Generar</button>
+    <button id="clearBtn" class="clear" type="button">Borrar</button>
+    <p id="message" role="status" aria-live="polite"></p>
+    <div id="barcode-wrap">
+      <svg id="barcode" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Código de barras generado"></svg>
+    </div>
+    <p class="footer">Funciona sin conexión después de instalarse y abrirse una vez desde la web.</p>
+  </main>
+  <button class="toggle" id="themeBtn" type="button" aria-label="Cambiar tema">☾</button>
+
+<script>
+(() => {
+  // Code 39: cada patrón contiene 9 elementos alternados (barra/espacio).
+  const CODE39 = {
+    "0":"nnnwwnwnn","1":"wnnwnnnnw","2":"nnwwnnnnw","3":"wnwwnnnnn",
+    "4":"nnnwwnnnw","5":"wnnwwnnnn","6":"nnwwwnnnn","7":"nnnwnnwnw",
+    "8":"wnnwnnwnn","9":"nnwwnnwnn","A":"wnnnnwnnw","B":"nnwnnwnnw",
+    "C":"wnwnnwnnn","D":"nnnnwwnnw","E":"wnnnwwnnn","F":"nnwnwwnnn",
+    "G":"nnnnnwwnw","H":"wnnnnwwnn","I":"nnwnnwwnn","J":"nnnnwwwnn",
+    "K":"wnnnnnnww","L":"nnwnnnnww","M":"wnwnnnnwn","N":"nnnnwnnww",
+    "O":"wnnnwnnwn","P":"nnwnwnnwn","Q":"nnnnnnwww","R":"wnnnnnwwn",
+    "S":"nnwnnnwwn","T":"nnnnwnwwn","U":"wwnnnnnnw","V":"nwwnnnnnw",
+    "W":"wwwnnnnnn","X":"nwnnwnnnw","Y":"wwnnwnnnn","Z":"nwwnwnnnn",
+    "-":"nwnnnnwnw",".":"wwnnnnwnn"," ":"nwwnnnwnn","$":"nwnwnwnnn",
+    "/":"nwnwnnnwn","+":"nwnnnwnwn","%":"nnnwnwnwn","*":"nwnnwnwnn"
+  };
+  const input = document.getElementById("inputText");
+  const svg = document.getElementById("barcode");
+  const wrap = document.getElementById("barcode-wrap");
+  const message = document.getElementById("message");
+
+  function makeBarcode(raw) {
+    const value = raw.trim().toUpperCase();
+    if (!value) { message.textContent = "Por favor escribe algo."; return; }
+    if ([...value].some(ch => !CODE39[ch] || ch === "*")) {
+      message.textContent = "Hay caracteres no permitidos. Usa A–Z, 0–9, espacio o - . $ / + %.";
+      return;
+    }
+    const encoded = "*" + value + "*";
+    const narrow = 2, wide = 5, barHeight = 105, quiet = 18;
+    let x = quiet;
+    const parts = [];
+    for (let c = 0; c < encoded.length; c++) {
+      const pattern = CODE39[encoded[c]];
+      for (let i = 0; i < 9; i++) {
+        const w = pattern[i] === "w" ? wide : narrow;
+        if (i % 2 === 0) parts.push(`<rect x="${x}" y="0" width="${w}" height="${barHeight}" fill="#000"/>`);
+        x += w;
+      }
+      if (c < encoded.length - 1) x += narrow;
+    }
+    const totalWidth = x + quiet;
+    const labelHeight = 28;
+    svg.setAttribute("viewBox", `0 0 ${totalWidth} ${barHeight + labelHeight}`);
+    svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+    svg.innerHTML = parts.join("") +
+      `<text x="${totalWidth/2}" y="${barHeight+21}" text-anchor="middle" font-family="Arial,sans-serif" font-size="17" fill="#000">${value.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</text>`;
+    wrap.style.display = "block";
+    message.textContent = "";
+  }
+  document.getElementById("generateBtn").addEventListener("click", () => makeBarcode(input.value));
+  input.addEventListener("keydown", e => { if (e.key === "Enter") makeBarcode(input.value); });
+  document.getElementById("clearBtn").addEventListener("click", () => {
+    input.value = ""; svg.innerHTML = ""; wrap.style.display = "none"; message.textContent = ""; input.focus();
+  });
+  document.getElementById("themeBtn").addEventListener("click", () => {
+    document.body.classList.toggle("light");
+    document.getElementById("themeBtn").textContent = document.body.classList.contains("light") ? "☾" : "☀";
+  });
+  if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
+    window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
+  }
+})();
+</script>
+</body>
+</html>
